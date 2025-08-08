@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# /// script
+# dependencies = [
+#     "mcp>=1.5.0",
+#     "openai>=1.68.2",
+#     "graphiti-core>=0.14.0",
+#     "azure-identity>=1.21.0",
+#     "typing-extensions>=4.0.0",
+# ]
+# ///
 """
 Graphiti MCP Server - Exposes Graphiti functionality through the Model Context Protocol (MCP)
 """
@@ -10,7 +19,8 @@ import os
 import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, TypedDict, cast
+from typing import Any, Optional, cast
+from typing_extensions import TypedDict
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from dotenv import load_dotenv
@@ -41,6 +51,7 @@ load_dotenv()
 DEFAULT_LLM_MODEL = 'gpt-4.1-mini'
 SMALL_LLM_MODEL = 'gpt-4.1-nano'
 DEFAULT_EMBEDDER_MODEL = 'text-embedding-3-small'
+
 
 # Semaphore limit for concurrent Graphiti operations.
 # Decrease this if you're experiencing 429 rate limit errors from your LLM provider.
@@ -121,10 +132,214 @@ class Procedure(BaseModel):
     )
 
 
+class Resource(BaseModel):
+    """A Resource represents any artifact in the development ecosystem - code files, documentation, configurations, schemas, or data files.
+
+    This flexible entity can represent files, modules, documents, PRDs, configurations, 
+    or any other resource that exists as a discrete unit in the project.
+
+    Instructions for identifying and extracting resources:
+    1. Look for mentions of files, documents, or modules ("the authentication.js file", "in the README", "the config.yaml")
+    2. Identify code modules and their purposes ("the auth module handles JWT tokens")
+    3. Extract documentation references ("according to the API docs", "the design document states")
+    4. Capture configuration files and their roles ("the webpack.config.js defines bundling")
+    5. Note data files and schemas ("the users.json schema", "the database migration files")
+    6. Track dependencies between resources ("this component imports utils", "requires the crypto module")
+    7. Record version information when mentioned ("using v2.1 of the API", "updated to latest")
+    8. Preserve file paths relative to project root when possible
+    9. Add specific typed fields as needed for domain-specific attributes
+    """
+    resource_type: Optional[str] = Field(
+        None,
+        description="Type of resource: code, doc, config, prd, data, api, schema, etc."
+    )
+    path: Optional[str] = Field(
+        None,
+        description="File path relative to project root or URL"
+    )
+    purpose: Optional[str] = Field(
+        None,
+        description="What this resource does or why it exists"
+    )
+    format: Optional[str] = Field(
+        None,
+        description="File format or content type: python, typescript, json, markdown, etc."
+    )
+    last_modified: Optional[datetime] = Field(
+        None,
+        description="When this resource was last modified"
+    )
+    dependencies: Optional[list[str]] = Field(
+        default=None,
+        description="Other resources this depends on"
+    )
+    exports: Optional[list[str]] = Field(
+        default=None,
+        description="What this resource exports or provides"
+    )
+    version: Optional[str] = Field(
+        None,
+        description="Version or revision identifier"
+    )
+
+
+class Knowledge(BaseModel):
+    """A Knowledge entity represents insights, patterns, decisions, problems, solutions, or learnings discovered during development.
+
+    Captures all forms of knowledge gained during development work, from technical patterns 
+    to architectural decisions, from bug root causes to performance optimizations.
+
+    Instructions for identifying and extracting knowledge:
+    1. Look for discovered patterns or approaches ("using useMemo reduced re-renders by 60%", "singleton pattern works well here")
+    2. Identify architectural or technical decisions ("we chose PostgreSQL over MongoDB because...", "decided to use microservices")
+    3. Extract problems and their solutions ("the memory leak was caused by...", "fixed by implementing connection pooling")
+    4. Capture learnings and insights ("learned that React.memo is not always beneficial", "discovered that caching improves response time")
+    5. Note performance findings ("database queries are the bottleneck", "lazy loading reduced initial bundle by 40%")
+    6. Record security discoveries ("found XSS vulnerability in user input", "API keys were exposed in client code")
+    7. Track what didn't work and why ("tried WebSockets but latency was too high", "recursive approach caused stack overflow")
+    8. Preserve confidence levels when uncertainty is expressed ("might be", "probably", "definitely")
+    9. Link knowledge to affected resources when mentioned ("applies to all API endpoints", "specific to the Dashboard component")
+    10. Add specific typed fields for metrics, benchmarks, or domain-specific details
+    """
+    knowledge_type: Optional[str] = Field(
+        None,
+        description="Type: pattern, decision, learning, problem, solution, insight, etc."
+    )
+    title: Optional[str] = Field(
+        None,
+        description="Brief title or identifier (not 'name' - that's protected)"
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Detailed description of the knowledge"
+    )
+    category: Optional[str] = Field(
+        None,
+        description="Domain or category: architecture, performance, security, ux, etc."
+    )
+    status: Optional[str] = Field(
+        None,
+        description="Current status: experimental, validated, deprecated, superseded, etc."
+    )
+    confidence: Optional[float] = Field(
+        None,
+        description="Confidence level (0.0 to 1.0)"
+    )
+    impact: Optional[str] = Field(
+        None,
+        description="Impact level: critical, high, medium, low"
+    )
+    affected_resources: Optional[list[str]] = Field(
+        default=None,
+        description="Resources (files, modules) this knowledge applies to"
+    )
+    related_knowledge: Optional[list[str]] = Field(
+        default=None,
+        description="Related knowledge items"
+    )
+    evidence: Optional[list[str]] = Field(
+        default=None,
+        description="Supporting evidence or examples"
+    )
+    discovered_at: Optional[datetime] = Field(
+        None,
+        description="When this knowledge was discovered"
+    )
+    validated_at: Optional[datetime] = Field(
+        None,
+        description="When this knowledge was validated"
+    )
+
+
+class WorkItem(BaseModel):
+    """A WorkItem represents any unit of development work - features, bugs, tasks, refactors, explorations, or sprints.
+
+    Tracks all types of development activities from high-level features to specific bug fixes,
+    from exploratory spikes to systematic refactoring efforts.
+
+    Instructions for identifying and extracting work items:
+    1. Look for feature implementations ("implementing OAuth authentication", "adding dark mode support")
+    2. Identify bug fixes and issues ("fixing the login timeout bug", "resolved race condition in checkout")
+    3. Extract refactoring efforts ("refactoring the payment module", "cleaning up technical debt in utils")
+    4. Capture exploratory work ("exploring GraphQL alternatives", "spike on WebSocket implementation")
+    5. Note task descriptions and their outcomes ("migrated database to PostgreSQL", "updated all dependencies")
+    6. Track sprint or iteration work ("Sprint 23 focused on performance", "Q1 goals included API redesign")
+    7. Record blockers and impediments ("blocked by missing API documentation", "waiting for design approval")
+    8. Preserve status transitions ("started Monday", "completed after 3 days", "put on hold due to priorities")
+    9. Link to affected resources ("modified 15 files", "touched authentication and user modules")
+    10. Capture unexpected discoveries during work ("found unrelated bug while testing", "discovered performance issue")
+    11. Note time estimates vs actuals when mentioned ("estimated 2 days, took 5 days")
+    12. Add specific typed fields for PR numbers, ticket IDs, or team-specific attributes
+    """
+    work_type: Optional[str] = Field(
+        None,
+        description="Type: feature, bug, task, refactor, exploration, spike, etc."
+    )
+    title: Optional[str] = Field(
+        None,
+        description="Work item title or brief description"
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Detailed description of the work"
+    )
+    status: Optional[str] = Field(
+        None,
+        description="Current status: planned, in_progress, completed, blocked, etc."
+    )
+    priority: Optional[str] = Field(
+        None,
+        description="Priority level: critical, high, medium, low"
+    )
+    sprint_id: Optional[str] = Field(
+        None,
+        description="Associated sprint or iteration"
+    )
+    parent_id: Optional[str] = Field(
+        None,
+        description="Parent work item if this is a subtask"
+    )
+    started_at: Optional[datetime] = Field(
+        None,
+        description="When work began"
+    )
+    completed_at: Optional[datetime] = Field(
+        None,
+        description="When work was completed"
+    )
+    estimated_hours: Optional[float] = Field(
+        None,
+        description="Estimated hours to complete"
+    )
+    actual_hours: Optional[float] = Field(
+        None,
+        description="Actual hours spent"
+    )
+    outcome: Optional[str] = Field(
+        None,
+        description="Result: success, partial, blocked, pivoted, cancelled"
+    )
+    blockers: Optional[list[str]] = Field(
+        default=None,
+        description="Things blocking progress"
+    )
+    affected_resources: Optional[list[str]] = Field(
+        default=None,
+        description="Resources modified or affected"
+    )
+    discoveries: Optional[list[str]] = Field(
+        default=None,
+        description="Unexpected findings during work"
+    )
+
+
 ENTITY_TYPES: dict[str, BaseModel] = {
     'Requirement': Requirement,  # type: ignore
     'Preference': Preference,  # type: ignore
     'Procedure': Procedure,  # type: ignore
+    'Resource': Resource,  # type: ignore
+    'Knowledge': Knowledge,  # type: ignore
+    'WorkItem': WorkItem,  # type: ignore
 }
 
 
@@ -213,10 +428,13 @@ class GraphitiLLMConfig(BaseModel):
         small_model = small_model_env if small_model_env.strip() else SMALL_LLM_MODEL
 
         azure_openai_endpoint = os.environ.get('AZURE_OPENAI_ENDPOINT', None)
-        azure_openai_api_version = os.environ.get('AZURE_OPENAI_API_VERSION', None)
-        azure_openai_deployment_name = os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME', None)
+        azure_openai_api_version = os.environ.get(
+            'AZURE_OPENAI_API_VERSION', None)
+        azure_openai_deployment_name = os.environ.get(
+            'AZURE_OPENAI_DEPLOYMENT_NAME', None)
         azure_openai_use_managed_identity = (
-            os.environ.get('AZURE_OPENAI_USE_MANAGED_IDENTITY', 'false').lower() == 'true'
+            os.environ.get('AZURE_OPENAI_USE_MANAGED_IDENTITY',
+                           'false').lower() == 'true'
         )
 
         if azure_openai_endpoint is None:
@@ -241,9 +459,11 @@ class GraphitiLLMConfig(BaseModel):
             # Setup for Azure OpenAI API
             # Log if empty deployment name was provided
             if azure_openai_deployment_name is None:
-                logger.error('AZURE_OPENAI_DEPLOYMENT_NAME environment variable not set')
+                logger.error(
+                    'AZURE_OPENAI_DEPLOYMENT_NAME environment variable not set')
 
-                raise ValueError('AZURE_OPENAI_DEPLOYMENT_NAME environment variable not set')
+                raise ValueError(
+                    'AZURE_OPENAI_DEPLOYMENT_NAME environment variable not set')
             if not azure_openai_use_managed_identity:
                 # api key
                 api_key = os.environ.get('OPENAI_API_KEY', None)
@@ -275,13 +495,15 @@ class GraphitiLLMConfig(BaseModel):
                 config.model = args.model
             else:
                 # Log that empty model was provided and default is used
-                logger.warning(f'Empty model name provided, using default: {DEFAULT_LLM_MODEL}')
+                logger.warning(
+                    f'Empty model name provided, using default: {DEFAULT_LLM_MODEL}')
 
         if hasattr(args, 'small_model') and args.small_model:
             if args.small_model.strip():
                 config.small_model = args.small_model
             else:
-                logger.warning(f'Empty small_model name provided, using default: {SMALL_LLM_MODEL}')
+                logger.warning(
+                    f'Empty small_model name provided, using default: {SMALL_LLM_MODEL}')
 
         if hasattr(args, 'temperature') and args.temperature is not None:
             config.temperature = args.temperature
@@ -331,10 +553,12 @@ class GraphitiLLMConfig(BaseModel):
                     ),
                 )
             else:
-                raise ValueError('OPENAI_API_KEY must be set when using Azure OpenAI API')
+                raise ValueError(
+                    'OPENAI_API_KEY must be set when using Azure OpenAI API')
 
         if not self.api_key:
-            raise ValueError('OPENAI_API_KEY must be set when using OpenAI API')
+            raise ValueError(
+                'OPENAI_API_KEY must be set when using OpenAI API')
 
         llm_client_config = LLMConfig(
             api_key=self.api_key, model=self.model, small_model=self.small_model
@@ -354,6 +578,7 @@ class GraphitiEmbedderConfig(BaseModel):
 
     model: str = DEFAULT_EMBEDDER_MODEL
     api_key: str | None = None
+    base_url: str | None = None
     azure_openai_endpoint: str | None = None
     azure_openai_deployment_name: str | None = None
     azure_openai_api_version: str | None = None
@@ -364,16 +589,36 @@ class GraphitiEmbedderConfig(BaseModel):
         """Create embedder configuration from environment variables."""
 
         # Get model from environment, or use default if not set or empty
-        model_env = os.environ.get('EMBEDDER_MODEL_NAME', '')
+        # Support both EMBEDDER_MODEL and EMBEDDER_MODEL_NAME for backwards compatibility
+        model_env = os.environ.get('EMBEDDER_MODEL', '') or os.environ.get(
+            'EMBEDDER_MODEL_NAME', '')
         model = model_env if model_env.strip() else DEFAULT_EMBEDDER_MODEL
 
-        azure_openai_endpoint = os.environ.get('AZURE_OPENAI_EMBEDDING_ENDPOINT', None)
-        azure_openai_api_version = os.environ.get('AZURE_OPENAI_EMBEDDING_API_VERSION', None)
+        # Get base URL from environment
+        base_url = os.environ.get('EMBEDDER_BASE_URL', None)
+
+        # Log if EMBEDDER_MODEL was provided
+        if os.environ.get('EMBEDDER_MODEL'):
+            logger.debug(f'Using EMBEDDER_MODEL from environment: {model}')
+        elif model_env == '':
+            logger.debug(
+                f'EMBEDDER_MODEL not set, using default: {DEFAULT_EMBEDDER_MODEL}')
+
+        # Log if EMBEDDER_BASE_URL was provided
+        if base_url:
+            logger.debug(
+                f'Using EMBEDDER_BASE_URL from environment: {base_url}')
+
+        azure_openai_endpoint = os.environ.get(
+            'AZURE_OPENAI_EMBEDDING_ENDPOINT', None)
+        azure_openai_api_version = os.environ.get(
+            'AZURE_OPENAI_EMBEDDING_API_VERSION', None)
         azure_openai_deployment_name = os.environ.get(
             'AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME', None
         )
         azure_openai_use_managed_identity = (
-            os.environ.get('AZURE_OPENAI_USE_MANAGED_IDENTITY', 'false').lower() == 'true'
+            os.environ.get('AZURE_OPENAI_USE_MANAGED_IDENTITY',
+                           'false').lower() == 'true'
         )
         if azure_openai_endpoint is not None:
             # Setup for Azure OpenAI API
@@ -382,7 +627,8 @@ class GraphitiEmbedderConfig(BaseModel):
                 'AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME', None
             )
             if azure_openai_deployment_name is None:
-                logger.error('AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME environment variable not set')
+                logger.error(
+                    'AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME environment variable not set')
 
                 raise ValueError(
                     'AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME environment variable not set'
@@ -408,6 +654,7 @@ class GraphitiEmbedderConfig(BaseModel):
             return cls(
                 model=model,
                 api_key=os.environ.get('OPENAI_API_KEY'),
+                base_url=base_url,
             )
 
     def create_client(self) -> EmbedderClient | None:
@@ -437,14 +684,19 @@ class GraphitiEmbedderConfig(BaseModel):
                     model=self.model,
                 )
             else:
-                logger.error('OPENAI_API_KEY must be set when using Azure OpenAI API')
+                logger.error(
+                    'OPENAI_API_KEY must be set when using Azure OpenAI API')
                 return None
         else:
             # OpenAI API setup
             if not self.api_key:
                 return None
 
-            embedder_config = OpenAIEmbedderConfig(api_key=self.api_key, embedding_model=self.model)
+            embedder_config = OpenAIEmbedderConfig(
+                api_key=self.api_key,
+                embedding_model=self.model,
+                base_url=self.base_url
+            )
 
             return OpenAIEmbedder(config=embedder_config)
 
@@ -473,7 +725,8 @@ class GraphitiConfig(BaseModel):
     """
 
     llm: GraphitiLLMConfig = Field(default_factory=GraphitiLLMConfig)
-    embedder: GraphitiEmbedderConfig = Field(default_factory=GraphitiEmbedderConfig)
+    embedder: GraphitiEmbedderConfig = Field(
+        default_factory=GraphitiEmbedderConfig)
     neo4j: Neo4jConfig = Field(default_factory=Neo4jConfig)
     group_id: str | None = None
     use_custom_entities: bool = False
@@ -581,11 +834,13 @@ async def initialize_graphiti():
         llm_client = config.llm.create_client()
         if not llm_client and config.use_custom_entities:
             # If custom entities are enabled, we must have an LLM client
-            raise ValueError('OPENAI_API_KEY must be set when custom entities are enabled')
+            raise ValueError(
+                'OPENAI_API_KEY must be set when custom entities are enabled')
 
         # Validate Neo4j configuration
         if not config.neo4j.uri or not config.neo4j.user or not config.neo4j.password:
-            raise ValueError('NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD must be set')
+            raise ValueError(
+                'NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD must be set')
 
         embedder_client = config.embedder.create_client()
 
@@ -613,7 +868,17 @@ async def initialize_graphiti():
             logger.info(f'Using OpenAI model: {config.llm.model}')
             logger.info(f'Using temperature: {config.llm.temperature}')
         else:
-            logger.info('No LLM client configured - entity extraction will be limited')
+            logger.info(
+                'No LLM client configured - entity extraction will be limited')
+
+        if embedder_client:
+            logger.info(f'Using embedder model: {config.embedder.model}')
+            if config.embedder.base_url:
+                logger.info(
+                    f'Using embedder base URL: {config.embedder.base_url}')
+        else:
+            logger.info(
+                'No embedder client configured - semantic search will be limited')
 
         logger.info(f'Using group_id: {config.group_id}')
         logger.info(
@@ -675,14 +940,17 @@ async def process_episode_queue(group_id: str):
                 # Process the episode
                 await process_func()
             except Exception as e:
-                logger.error(f'Error processing queued episode for group_id {group_id}: {str(e)}')
+                logger.error(
+                    f'Error processing queued episode for group_id {group_id}: {str(e)}')
             finally:
                 # Mark the task as done regardless of success/failure
                 episode_queues[group_id].task_done()
     except asyncio.CancelledError:
-        logger.info(f'Episode queue worker for group_id {group_id} was cancelled')
+        logger.info(
+            f'Episode queue worker for group_id {group_id} was cancelled')
     except Exception as e:
-        logger.error(f'Unexpected error in queue worker for group_id {group_id}: {str(e)}')
+        logger.error(
+            f'Unexpected error in queue worker for group_id {group_id}: {str(e)}')
     finally:
         queue_workers[group_id] = False
         logger.info(f'Stopped episode queue worker for group_id: {group_id}')
@@ -770,7 +1038,8 @@ async def add_memory(
 
         # Cast group_id to str to satisfy type checker
         # The Graphiti client expects a str for group_id, not Optional[str]
-        group_id_str = str(effective_group_id) if effective_group_id is not None else ''
+        group_id_str = str(
+            effective_group_id) if effective_group_id is not None else ''
 
         # We've already checked that graphiti_client is not None above
         # This assert statement helps type checkers understand that graphiti_client is defined
@@ -782,7 +1051,8 @@ async def add_memory(
         # Define the episode processing function
         async def process_episode():
             try:
-                logger.info(f"Processing queued episode '{name}' for group_id: {group_id_str}")
+                logger.info(
+                    f"Processing queued episode '{name}' for group_id: {group_id_str}")
                 # Use all entity types if use_custom_entities is enabled, otherwise use empty dict
                 entity_types = ENTITY_TYPES if config.use_custom_entities else {}
 
@@ -837,14 +1107,14 @@ async def search_memory_nodes(
     """Search the graph memory for relevant node summaries.
     These contain a summary of all of a node's relationships with other nodes.
 
-    Note: entity is a single entity type to filter results (permitted: "Preference", "Procedure").
+    Note: entity is a single entity type to filter results (permitted: "Preference", "Procedure", "Requirement", "Resource", "Knowledge", "WorkItem").
 
     Args:
         query: The search query
         group_ids: Optional list of group IDs to filter results
         max_nodes: Maximum number of nodes to return (default: 10)
         center_node_uuid: Optional UUID of a node to center the search around
-        entity: Optional single entity type to filter results (permitted: "Preference", "Procedure")
+        entity: Optional single entity type to filter results (permitted: "Preference", "Procedure", "Requirement", "Resource", "Knowledge", "WorkItem")
     """
     global graphiti_client
 
@@ -854,12 +1124,14 @@ async def search_memory_nodes(
     try:
         # Use the provided group_ids or fall back to the default from config if none provided
         effective_group_ids = (
-            group_ids if group_ids is not None else [config.group_id] if config.group_id else []
+            group_ids if group_ids is not None else [
+                config.group_id] if config.group_id else []
         )
 
         # Configure the search
         if center_node_uuid is not None:
-            search_config = NODE_HYBRID_SEARCH_NODE_DISTANCE.model_copy(deep=True)
+            search_config = NODE_HYBRID_SEARCH_NODE_DISTANCE.model_copy(
+                deep=True)
         else:
             search_config = NODE_HYBRID_SEARCH_RRF.model_copy(deep=True)
         search_config.limit = max_nodes
@@ -934,7 +1206,8 @@ async def search_memory_facts(
 
         # Use the provided group_ids or fall back to the default from config if none provided
         effective_group_ids = (
-            group_ids if group_ids is not None else [config.group_id] if config.group_id else []
+            group_ids if group_ids is not None else [
+                config.group_id] if config.group_id else []
         )
 
         # We've already checked that graphiti_client is not None above
@@ -1081,7 +1354,8 @@ async def get_episodes(
         client = cast(Graphiti, graphiti_client)
 
         episodes = await client.retrieve_episodes(
-            group_ids=[effective_group_id], last_n=last_n, reference_time=datetime.now(timezone.utc)
+            group_ids=[effective_group_id], last_n=last_n, reference_time=datetime.now(
+                timezone.utc)
         )
 
         if not episodes:
@@ -1189,7 +1463,8 @@ async def initialize_server() -> MCPConfig:
         type=float,
         help='Temperature setting for the LLM (0.0-2.0). Lower values make output more deterministic. (default: 0.7)',
     )
-    parser.add_argument('--destroy-graph', action='store_true', help='Destroy all Graphiti graphs')
+    parser.add_argument('--destroy-graph', action='store_true',
+                        help='Destroy all Graphiti graphs')
     parser.add_argument(
         '--use-custom-entities',
         action='store_true',
@@ -1216,7 +1491,8 @@ async def initialize_server() -> MCPConfig:
     if config.use_custom_entities:
         logger.info('Entity extraction enabled using predefined ENTITY_TYPES')
     else:
-        logger.info('Entity extraction disabled (no custom entities will be used)')
+        logger.info(
+            'Entity extraction disabled (no custom entities will be used)')
 
     # Initialize Graphiti
     await initialize_graphiti()

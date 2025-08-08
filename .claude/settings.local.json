@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:help.getzep.com)",
+      "mcp__exa-search__web_search_exa",
+      "mcp__graphiti__add_memory",
+      "mcp__graphiti__search_memory_nodes",
+      "mcp__duckduckgo__search",
+      "mcp__fetch__fetch",
+      "WebFetch(domain:docs.graphiti.ai)",
+      "mcp__sequentialthinking__sequentialthinking",
+      "Bash(uv run:*)",
+      "Bash(uv:*)",
+      "Bash(pip show:*)"
+    ],
+    "deny": []
+  }
+}
