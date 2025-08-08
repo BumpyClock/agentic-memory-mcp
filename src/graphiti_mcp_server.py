@@ -964,6 +964,7 @@ async def add_memory(
     source: str = 'text',
     source_description: str = '',
     uuid: str | None = None,
+    update_communities: bool = False,
 ) -> SuccessResponse | ErrorResponse:
     """Add an episode to memory. This is the primary way to add information to the graph.
 
@@ -983,6 +984,9 @@ async def add_memory(
                                - 'message': For conversation-style content
         source_description (str, optional): Description of the source
         uuid (str, optional): Optional UUID for the episode
+        update_communities (bool, optional): Whether to update communities when adding this episode (default: False).
+                                            When True, new nodes will be added to the community with the most 
+                                            represented surrounding nodes using label propagation
 
     Examples:
         # Adding plain text content
@@ -994,13 +998,14 @@ async def add_memory(
             group_id="some_arbitrary_string"
         )
 
-        # Adding structured JSON data
+        # Adding structured JSON data with community updates
         # NOTE: episode_body must be a properly escaped JSON string. Note the triple backslashes
         add_memory(
             name="Customer Profile",
             episode_body="{\\\"company\\\": {\\\"name\\\": \\\"Acme Technologies\\\"}, \\\"products\\\": [{\\\"id\\\": \\\"P001\\\", \\\"name\\\": \\\"CloudSync\\\"}, {\\\"id\\\": \\\"P002\\\", \\\"name\\\": \\\"DataMiner\\\"}]}",
             source="json",
-            source_description="CRM data"
+            source_description="CRM data",
+            update_communities=True  # Update communities to include new nodes
         )
 
         # Adding message-style content
@@ -1009,7 +1014,8 @@ async def add_memory(
             episode_body="user: What's your return policy?\nassistant: You can return items within 30 days.",
             source="message",
             source_description="chat transcript",
-            group_id="some_arbitrary_string"
+            group_id="some_arbitrary_string",
+            update_communities=True  # Incrementally update communities
         )
 
     Notes:
@@ -1065,6 +1071,7 @@ async def add_memory(
                     uuid=uuid,
                     reference_time=datetime.now(timezone.utc),
                     entity_types=entity_types,
+                    update_communities=update_communities,
                 )
                 logger.info(f"Episode '{name}' added successfully")
 
@@ -1401,6 +1408,53 @@ async def clear_graph() -> SuccessResponse | ErrorResponse:
         error_msg = str(e)
         logger.error(f'Error clearing graph: {error_msg}')
         return ErrorResponse(error=f'Error clearing graph: {error_msg}')
+
+
+@mcp.tool()
+async def build_communities(
+    group_id: str | None = None
+) -> SuccessResponse | ErrorResponse:
+    """Build or rebuild communities in the graph using the Leiden algorithm.
+    
+    Communities are CommunityNode objects that group related entity nodes together
+    and provide synthesized, high-level information about graph contents.
+    
+    This operation removes existing communities and creates new ones based on
+    the current graph structure. For optimal grouping, run this periodically
+    rather than relying only on incremental updates via update_communities.
+    
+    Args:
+        group_id: Optional group ID to build communities for. If not provided,
+                 uses the default group_id from configuration.
+    """
+    global graphiti_client
+
+    if graphiti_client is None:
+        return ErrorResponse(error='Graphiti client not initialized')
+
+    try:
+        # Use the provided group_id or fall back to the default from config
+        effective_group_id = group_id if group_id is not None else config.group_id
+
+        # We've already checked that graphiti_client is not None above
+        assert graphiti_client is not None
+
+        # Use cast to help the type checker understand that graphiti_client is not None
+        client = cast(Graphiti, graphiti_client)
+
+        logger.info(f'Building communities for group_id: {effective_group_id}')
+        
+        # Build communities using the Leiden algorithm
+        await client.build_communities()
+        
+        return SuccessResponse(
+            message=f'Communities built successfully for group_id: {effective_group_id}. '
+                   f'Related nodes have been grouped and summaries synthesized.'
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f'Error building communities: {error_msg}')
+        return ErrorResponse(error=f'Error building communities: {error_msg}')
 
 
 @mcp.resource('http://graphiti/status')

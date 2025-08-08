@@ -12,7 +12,9 @@
       "Bash(uv run:*)",
       "Bash(uv:*)",
       "Bash(pip show:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
     ],
     "deny": []
   }
